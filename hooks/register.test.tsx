@@ -139,9 +139,74 @@ test('the handover goes to the prompt box, or to a field in the card', async ($,
   await ui.unmount()
 })
 
+test('the first start shows the setup card, and Done closes it for good', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const saved: Record<string, unknown> = {}
+  on('config.set', (_, e) => {
+    saved[e.key] = e.value
+
+    return { value: e.value }
+  })
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>engine</Text>
+  })
+
+  const start = { cwd: '/', surface: 'desktop', isInteractive: true } as const
+  await $.session.start(start)
+  let ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /setup/ }))?.text).toBe(
+    'cache-watch setup',
+  )
+
+  await $.ui.press({ plugin: 'cache-watch', key: 'ttl-5' })
+  await $.ui.press({ plugin: 'cache-watch', key: 'limits-300k' })
+  expect(saved).toEqual({
+    'cache-watch.cacheTtlMinutes': 5,
+    'cache-watch.contextLimits': '300k/500k',
+  })
+
+  await $.ui.press({ plugin: 'cache-watch', key: 'setup-done' })
+  await ui.unmount()
+
+  // The next start reads the stored answer: no setup card.
+  await $.session.start(start)
+  ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /setup/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test(
+  'the chosen settings move the cache timer and the limits',
+  { options: { cacheTtlMinutes: 5, contextLimits: '300k/500k' } },
+  async ($, on) => {
+    const clock = mock.clock(on)
+    on('session.measure', (_, e) => ({ changed: e.changed }))
+
+    await $.session.measure(measure(350_000))
+    let ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe(
+      'Context: 350k tokens',
+    )
+    expect(await ui.find({ type: 'Text', text: /expired/ })).toBe(undefined)
+    await ui.unmount()
+
+    const fiveMinutesMs = 300_000
+    await clock.advance(fiveMinutesMs + 1)
+    ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await ui.find({ type: 'Text', text: /expired/ })).not.toBe(undefined)
+    await ui.unmount()
+  },
+)
+
 test('the demo command shows every card at once and closes again', async ($, on) => {
   mock.clock(on)
-  on('command.register', () => ({ value: { command: 'cache-watch-demo' } }))
+  mock.store(on, { isSetupDone: true })
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)

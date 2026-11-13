@@ -12,6 +12,16 @@ const RING_RADIUS = 16
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS
 const RING_MIN_FILL = 0.03
 const DEMO_COMMAND = 'cache-watch-demo'
+const SETUP_COMMAND = 'cache-watch-setup'
+const SETUP_DONE_KEY = 'isSetupDone'
+const SETUP_COLOR = 'suggestion'
+const SETUP_LABEL_CELLS = 15
+const TOKENS_PER_K = 1000
+const TTL_CHOICES = [
+  { minutes: 5, label: '5 min' },
+  { minutes: 60, label: '1 hour' },
+] as const
+const LIMIT_PRESETS = ['150k/180k', '300k/500k', '500k/700k'] as const
 
 const HANDOVER_PROMPT =
   'Write a handover document for a new session: the goal, the decisions and their reasons, the current state, the open steps and the key files. Save it as a markdown file. Then propose a new session with that document as its brief.'
@@ -48,6 +58,21 @@ const isEditing = atom(
   false,
 )
 const isDemo = atom({ plugin: 'cache-watch', key: 'isDemo' } as const, false)
+const isSetupOpen = atom(
+  { plugin: 'cache-watch', key: 'isSetupOpen' } as const,
+  false,
+)
+
+const parseLimits = (preset: string): [number, number] => {
+  const [info, warn] = preset
+    .split('/')
+    .map(part => Number.parseInt(part, 10) * TOKENS_PER_K)
+
+  return [info, warn]
+}
+
+const chosenLabel = (label: string, isChosen: boolean): string =>
+  isChosen ? `✓ ${label}` : label
 
 const tokensLabel = (tokens: number): string =>
   tokens >= 1_000_000
@@ -123,9 +148,10 @@ const armExpiry = ($: EngineInterface, ms: number) => {
 }
 
 export const register: Register = (on, options) => {
-  const ttlMs = Number(options.cacheTtlMinutes) * MINUTE_MS
-  const infoTokens = Number(options.infoTokens)
-  const warnTokens = Number(options.warnTokens)
+  const ttlMinutes = Number(options.cacheTtlMinutes)
+  const ttlMs = ttlMinutes * MINUTE_MS
+  const limits = String(options.contextLimits)
+  const [infoTokens, warnTokens] = parseLimits(limits)
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -133,6 +159,16 @@ export const register: Register = (on, options) => {
       description: 'Show or close a demo of all cache-watch cards',
       immediate: true,
     })
+    await $.command.register({
+      name: SETUP_COMMAND,
+      description: 'Open the cache-watch setup card',
+      immediate: true,
+    })
+
+    if ((await $.store.get(SETUP_DONE_KEY)) !== true) {
+      await update($, isSetupOpen, () => true)
+    }
+
     const last = await read($, reading)
 
     if (last === null) {
@@ -159,6 +195,12 @@ export const register: Register = (on, options) => {
         ? `The cache-watch demo is above the prompt. Run /${DEMO_COMMAND} again to close it.`
         : 'The cache-watch demo is closed.',
     }
+  })
+
+  on('command.run', { command: SETUP_COMMAND }, async $ => {
+    await update($, isSetupOpen, () => true)
+
+    return { text: 'The cache-watch setup card is above the prompt.' }
   })
 
   on('session.measure', async ($, e, next) => {
@@ -188,12 +230,94 @@ export const register: Register = (on, options) => {
     const hidden = await read($, dismissed)
     const isFieldOpen = await read($, isEditing)
     const isDemoOn = await read($, isDemo)
+    const isSetupOn = await read($, isSetupOpen)
 
     if (e.props.hasSurvey) {
       return next(e)
     }
 
     const { Box, Button, Input, Text } = $.ui.resolve(e)
+
+    if (isSetupOn) {
+      const saveOption = async (field: string, value: number | string) => {
+        try {
+          const { deny } = await $.config.set({
+            key: `cache-watch.${field}`,
+            value,
+          })
+
+          if (deny !== undefined) {
+            $.ui.toast(`Setting not saved: ${deny}`)
+          }
+        } catch {
+          $.ui.toast('Setting not saved: the settings have no cache-watch row.')
+        }
+      }
+
+      const finishSetup = async () => {
+        await $.store.set(SETUP_DONE_KEY, true)
+        await update($, isSetupOpen, () => false)
+      }
+
+      return (
+        <Box
+          flexDirection="column"
+          borderStyle="round"
+          borderColor={SETUP_COLOR}
+          paddingX={1}
+          gap="sm"
+        >
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Box flexDirection="column" flexGrow={1}>
+              <Text weight="semibold" color={SETUP_COLOR}>
+                cache-watch setup
+              </Text>
+              <Text dimColor size="footnote">
+                Open this card again with /{SETUP_COMMAND}.
+              </Text>
+            </Box>
+            <Button
+              key="setup-done"
+              label="Done"
+              role="dismiss"
+              onPress={finishSetup}
+            />
+          </Box>
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Box width={SETUP_LABEL_CELLS}>
+              <Text>Cache lifetime</Text>
+            </Box>
+            {TTL_CHOICES.map(choice => (
+              <Button
+                key={`ttl-${choice.minutes}`}
+                label={chosenLabel(choice.label, choice.minutes === ttlMinutes)}
+                variant={choice.minutes === ttlMinutes ? 'primary' : 'secondary'}
+                onPress={() => saveOption('cacheTtlMinutes', choice.minutes)}
+              />
+            ))}
+            <Text dimColor size="footnote">
+              1 hour on a subscription, 5 minutes in usage overage.
+            </Text>
+          </Box>
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Box width={SETUP_LABEL_CELLS}>
+              <Text>Context limits</Text>
+            </Box>
+            {LIMIT_PRESETS.map(preset => (
+              <Button
+                key={`limits-${preset.split('/')[0]}`}
+                label={chosenLabel(preset.replace('/', ' / '), preset === limits)}
+                variant={preset === limits ? 'primary' : 'secondary'}
+                onPress={() => saveOption('contextLimits', preset)}
+              />
+            ))}
+            <Text dimColor size="footnote">
+              Handover hint / new-session warning, in tokens.
+            </Text>
+          </Box>
+        </Box>
+      )
+    }
 
     const offerHandover = async () => {
       const { isFilled } = await $.prompt.fill({

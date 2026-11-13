@@ -44,20 +44,29 @@ On the desktop app the card has a ring gauge with marks at the two limits. The t
 
 This command shows all three cards at once with sample values. The buttons are real. Run the command again to close the demo.
 
+## Setup
+
+The first session after the install shows a setup card above the prompt. It has buttons for the two settings. Press **Done** to close it; it does not come back by itself. To open it again:
+
+```
+/cache-watch-setup
+```
+
 ## Settings
+
+The setup card writes these settings. You can also change them in the settings menu.
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `cacheTtlMinutes` | 60 | How long the prompt cache stays after the last request. Use 5 when the session is in usage overage. |
-| `infoTokens` | 500000 | The context size for the amber card. |
-| `warnTokens` | 700000 | The context size for the red card. |
+| `contextLimits` | `500k/700k` | The context sizes for the amber card and the red card. The other values are `300k/500k` and `150k/180k`. |
 
 ## Limits
 
 - The cache state is an estimate. Anthropic does not report that a cache entry is gone. The mod starts a timer at the end of each turn.
 - The card does not show a cache loss from a model switch or a compaction.
 - A resumed session shows nothing until its first response.
-- The default limits never trigger on a model with a 200k context window. Lower them in the settings.
+- The default limits never trigger on a model with a 200k context window. Select `150k/180k` for such a model.
 
 ## Development
 

@@ -8,6 +8,7 @@ declare module 'claude-code' {
       dismissed: string
       isEditing: boolean
       isDemo: boolean
+      isSetupOpen: boolean
     }
   }
 }
