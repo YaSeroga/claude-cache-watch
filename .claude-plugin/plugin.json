@@ -1,0 +1,27 @@
+{
+  "name": "cache-watch",
+  "version": "0.1.0",
+  "description": "Shows a card above the prompt when the prompt cache is expired or the context is large, and offers a handover to a new session.",
+  "author": { "name": "Serhii" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cacheTtlMinutes": {
+      "type": "number",
+      "title": "Prompt cache lifetime (minutes)",
+      "description": "How long Anthropic keeps the prompt cache after the last request: 60 on a subscription, 5 in usage overage.",
+      "default": 60
+    },
+    "infoTokens": {
+      "type": "number",
+      "title": "Context size for the handover hint (tokens)",
+      "description": "From this context size the card offers a handover.",
+      "default": 500000
+    },
+    "warnTokens": {
+      "type": "number",
+      "title": "Context size for the new-session warning (tokens)",
+      "description": "From this context size the card recommends a new session.",
+      "default": 700000
+    }
+  }
+}

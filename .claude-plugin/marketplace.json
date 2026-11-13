@@ -1,0 +1,11 @@
+{
+  "name": "cache-watch",
+  "owner": { "name": "Serhii" },
+  "plugins": [
+    {
+      "name": "cache-watch",
+      "source": "./",
+      "description": "Shows a card above the prompt when the prompt cache is expired or the context is large, and offers a handover to a new session."
+    }
+  ]
+}
